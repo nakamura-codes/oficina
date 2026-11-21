@@ -311,7 +311,6 @@ export class Matchmaker {
         send(l.ws, { t: 'error', message: 'Use duas contas diferentes para um duelo PvP.' });
         return;
       }
-      this.waiting = null;
       this.startMatch(new Match(other, l, (m) => this.cleanup(m)));
     } else {
       this.waiting = l;
@@ -335,7 +334,10 @@ export class Matchmaker {
 
   private startMatch(m: Match) {
     m.seats.forEach((s, i) => {
-      if (s.ws) this.byWs.set(s.ws, m);
+      if (s.ws) {
+        this.leaveQueue(s.ws);
+        this.byWs.set(s.ws, m);
+      }
       this.byToken.set(s.token, { match: m, seat: i as PlayerIndex });
     });
     m.start();
@@ -351,6 +353,9 @@ export class Matchmaker {
   rejoin(token: string, ws: Sock): boolean {
     const entry = this.byToken.get(token);
     if (!entry || entry.match.finished) return false;
+    const current = this.matchOf(ws);
+    if (current && !current.match.finished && (current.match !== entry.match || current.seat !== entry.seat)) return false;
+    this.leaveQueue(ws);
     const old = entry.match.seats[entry.seat].ws;
     if (old) this.byWs.delete(old);
     this.byWs.set(ws, entry.match);

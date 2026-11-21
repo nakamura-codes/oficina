@@ -1,7 +1,8 @@
+import { openCardInspector } from '../cardInspector.ts';
 import Phaser from 'phaser';
 import {
   COMBOS, VS_INTRO_MS, TURN_SECONDS,
-  getCard,
+  getCard, currentCardCost,
   previewCardDamage,
   type BattleEvent,
   type BattleView,
@@ -426,9 +427,9 @@ export class BattleScene extends Phaser.Scene {
     cards.forEach((c, i) => {
       const def = getCard(c.id);
       const x = midX - ((n - 1) * spacing) / 2 + i * spacing;
-      const card = makeCard(this, c.id, { preview: previewCardDamage(view, c.id) }).setPosition(x, y).setScale(handScale);
+      const cost = currentCardCost(view.me, c.id);
+      const card = makeCard(this, c.id, { cost, preview: previewCardDamage(view, c.id) }).setPosition(x, y).setScale(handScale);
       const locked = view.me.lockedTo !== null && c.id !== view.me.lockedTo;
-      const cost = view.me.lockedTo === c.id ? 0 : def.cost;
       const blockedReason = view.me.stunned
         ? 'Atordoado'
         : locked
@@ -447,7 +448,7 @@ export class BattleScene extends Phaser.Scene {
       card.setInteractive({ useHandCursor: playable });
       card.on('pointerover', (pointer: Phaser.Input.Pointer) => {
         if (pointer.wasTouch) return;
-        showCardReading(card, c.id);
+        showCardReading(card, c.id, cost);
         this.hand.bringToTop(card);
         // Amplia para ler, sem sair da tela.
         this.tweens.add({ targets: card, y: 720 - (CARD_H * 1.5) / 2 - 4, scale: 1.5, duration: 120 });
@@ -473,7 +474,7 @@ export class BattleScene extends Phaser.Scene {
         if (!pointer.wasTouch) return play();
         clearHold();
         inspected = false;
-        hold = this.time.delayedCall(320, () => { inspected = true; showCardReading(card, c.id); });
+        hold = this.time.delayedCall(320, () => { inspected = true; showCardReading(card, c.id, cost); });
       });
       card.on('pointerup', (pointer: Phaser.Input.Pointer) => {
         if (!pointer.wasTouch) return;
@@ -486,6 +487,23 @@ export class BattleScene extends Phaser.Scene {
       }
       this.hand.add(card);
       this.hand.add(this.lockButton(view, c.uid, c.id, x, y - (CARD_H * handScale) / 2 - 4, canAct));
+      if (this.sys.game.device.input.touch || navigator.maxTouchPoints > 0) {
+        const lens = this.add.container(x + 28, y - CARD_H * handScale / 2 - 4);
+        const icon = this.add.graphics();
+        icon.fillStyle(0x211d30).fillRoundedRect(-15, -15, 30, 30, 5);
+        icon.lineStyle(3, 0xffda88).strokeCircle(-2, -2, 6).lineBetween(3, 3, 9, 9);
+        const hit = this.add.zone(0, 0, 34, 36).setInteractive({ useHandCursor: true });
+        hit.on('pointerup', () => {
+          hideCardReading(card);
+          const art = this.textures.get('cardart_' + c.id).getSourceImage() as HTMLImageElement;
+          const dialog = openCardInspector(def.name, def.text, cost, art.src);
+          const dismiss = () => dialog.close();
+          card.once('destroy', dismiss);
+          dialog.addEventListener('close', () => card.off('destroy', dismiss), { once: true });
+        });
+        lens.add([icon, hit]);
+        this.hand.add(lens);
+      }
     });
   }
 

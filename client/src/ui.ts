@@ -70,7 +70,7 @@ export function hideCardReading(owner: Phaser.GameObjects.Container) {
 }
 
 /** Texto integral em pixels de tela, mesmo quando as cartas da mão ficam muito pequenas. */
-export function showCardReading(owner: Phaser.GameObjects.Container, id: string) {
+export function showCardReading(owner: Phaser.GameObjects.Container, id: string, cost?: number) {
   if (reader?.owner === owner) return;
   reader?.dispose();
   const def = getCard(id);
@@ -78,7 +78,8 @@ export function showCardReading(owner: Phaser.GameObjects.Container, id: string)
   node.className = 'card-reading';
   node.setAttribute('role', 'tooltip');
   const title = document.createElement('strong');
-  title.textContent = def.name;
+  title.textContent = cost === undefined ? def.name : def.name + ' · ' + cost + ' Ki';
+  if (cost !== undefined) node.classList.add('hand-reading');
   const rules = document.createElement('div');
   rules.textContent = def.text;
   node.append(title, rules);

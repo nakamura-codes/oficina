@@ -92,6 +92,8 @@ export interface Charge {
 }
 
 export interface QueuedCard {
+  /** Ordem de escolha, preservada quando o Scouter muda a ordem de execução. */
+  playOrder?: number;
   card: CardInstance;
   doubled: boolean;
   /** Ki pago (para desfazer devolver o valor certo). */

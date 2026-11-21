@@ -30,6 +30,33 @@ afterEach(() => {
 });
 
 describe('ciclo de vida das partidas PvP', () => {
+  it('sair da fila para treinar deixa os próximos dois jogadores disputarem o PvP', () => {
+    const mm = new Matchmaker();
+    const player = { ws: new TestSocket(), name: 'Treino', outfit: EMPTY_OUTFIT };
+    mm.join(player, false);
+    mm.join(player, true);
+    const training = mm.matchOf(player.ws)!.match;
+    mm.join(player, false);
+    const duel = pair(mm, new TestSocket(), new TestSocket());
+    expect(duel).not.toBe(training);
+    expect(mm.matchOf(player.ws)?.match).toBe(training);
+    expect(player.ws.messages.filter(m => m.t === 'match')).toHaveLength(1);
+  });
+
+  it('retomar o treino durante uma busca retira a conexão da fila', () => {
+    const mm = new Matchmaker();
+    const player = { ws: new TestSocket(), name: 'Treino', outfit: EMPTY_OUTFIT };
+    mm.join(player, true);
+    const training = mm.matchOf(player.ws)!.match;
+    mm.disconnect(player.ws);
+    const resumed = new TestSocket();
+    mm.join({ ...player, ws: resumed }, false);
+    expect(mm.rejoin(training.seats[0].token, resumed)).toBe(true);
+    const duel = pair(mm, new TestSocket(), new TestSocket());
+    expect(mm.rejoin(training.seats[0].token, duel.seats[0].ws!)).toBe(false);
+    expect(mm.matchOf(resumed)?.match).toBe(training);
+  });
+
   it('envia os avatares por assento e reserva a abertura antes do primeiro turno', () => {
     const mm = new Matchmaker();
     const a = new TestSocket(), b = new TestSocket();

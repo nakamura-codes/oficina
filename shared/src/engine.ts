@@ -230,8 +230,15 @@ export function turnStarter(state: BattleState): PlayerIndex {
 }
 
 /** Custo efetivo: no turno travado pelo combo, a carta criada é de graça. */
-function effectiveCost(f: Fighter, cardId: string): number {
+function effectiveCost(f: Pick<Fighter, 'lockedTo'>, cardId: string): number {
   return f.lockedTo === cardId ? 0 : getCard(cardId).cost;
+}
+
+/** Custo debitado se a carta for jogada agora, incluindo evoluções com Ki cheio. */
+export function currentCardCost(f: Pick<Fighter, 'ki' | 'lockedTo'>, cardId: string): number {
+  const def = getCard(cardId);
+  if (def.evolve && f.ki >= def.evolve.atKi) return def.evolve.atKi;
+  return effectiveCost(f, cardId);
 }
 
 /** Red + Blue (ou outro combo) já está na fila: o turno fecha. */
@@ -243,11 +250,14 @@ export function hasComboLock(f: Fighter): boolean {
 function recomputeQueueFlags(f: Fighter) {
   let cloneNext = false;
   let revealing = false;
-  for (const q of f.queue) {
+  f.queue.forEach((q, index) => { q.playOrder ??= index; });
+  const played = [...f.queue].sort((a, b) => a.playOrder! - b.playOrder!);
+  for (const q of played) {
     const def = getCard(q.card.id);
     if (def.effects.some((e) => e.kind === 'reveal')) revealing = true;
-    if (def.effects.some((e) => e.kind === 'clone')) cloneNext = true;
-    else cloneNext = false;
+    const isClone = def.effects.some((e) => e.kind === 'clone');
+    q.doubled = cloneNext && !isClone;
+    cloneNext = isClone;
   }
   f.cloneNext = cloneNext;
   f.revealing = revealing;
@@ -268,16 +278,16 @@ export function playCard(state: BattleState, player: PlayerIndex, cardUid: strin
   if (hasComboLock(f)) return { ok: false, error: 'Combo feito: nenhuma outra carta neste turno.' };
   // Galick Gun com Ki cheio: vira a carga do Big Bang Attack (gasta todo esse Ki).
   const powered = !!def.evolve && f.ki >= def.evolve.atKi;
-  const cost = powered ? def.evolve!.atKi : effectiveCost(f, def.id);
+  const cost = currentCardCost(f, def.id);
   if (cost > f.ki) return { ok: false, error: 'Ki insuficiente.' };
 
   const next = clone(state);
   const nf = next.fighters[player];
   const [card] = nf.hand.splice(idx, 1);
   nf.ki -= cost;
-  const isClone = def.effects.some((e) => e.kind === 'clone');
+  const playOrder = 1 + Math.max(-1, ...nf.queue.map((q, index) => q.playOrder ?? index));
   if (nf.keepUid === card.uid) nf.keepUid = null; // jogar a carta tira a trava
-  nf.queue.push({ card, doubled: nf.cloneNext && !isClone, paid: cost, powered });
+  nf.queue.push({ card, doubled: false, paid: cost, powered, playOrder });
   recomputeQueueFlags(nf);
   return { ok: true, state: next };
 }
@@ -328,6 +338,7 @@ export function moveToFront(state: BattleState, player: PlayerIndex, cardUid: st
   if (idx < 0) return { ok: false, error: 'Essa carta não está na sua jogada.' };
   const next = clone(state);
   const nf = next.fighters[player];
+  nf.queue.forEach((q, index) => { q.playOrder ??= index; });
   const [item] = nf.queue.splice(idx, 1);
   nf.queue.unshift(item);
   return { ok: true, state: next };

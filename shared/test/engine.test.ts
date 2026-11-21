@@ -8,6 +8,7 @@ import {
   RULES,
   buildDeck,
   createBattle,
+  currentCardCost,
   moveToFront,
   playCard,
   toggleKeep,
@@ -237,6 +238,21 @@ describe('resolução', () => {
     expect(s.fighters[0].queue[1].doubled).toBe(true);
     const { state } = readyAndResolve(s);
     expect(state.fighters[1].hp).toBe(200 - 20);
+  });
+
+  it('desfazer o clone após reordenar remove a duplicação do ataque', () => {
+    let s = newBattle();
+    giveHand(s, 0, ['leitura_de_poder', 'kage_bunshin', 'golpe_basico']);
+    for (const id of ['leitura_de_poder', 'kage_bunshin', 'golpe_basico']) s = play(s, 0, id);
+    const moved = moveToFront(s, 0, s.fighters[0].queue[2].card.uid);
+    if (!moved.ok) throw Error(moved.error);
+    expect(moved.state.fighters[0].queue[0].doubled).toBe(true);
+    const undone = undoLastCard(moved.state, 0);
+    if (!undone.ok) throw Error(undone.error);
+    expect(undone.state.fighters[0].hand.some(c => c.id === 'kage_bunshin')).toBe(true);
+    expect(undone.state.fighters[0].queue[0].doubled).toBe(false);
+    expect(viewFor(undone.state, 0).me.queuePreview.damage).toBe(8);
+    expect(readyAndResolve(undone.state).state.fighters[1].hp).toBe(192);
   });
 
   it('Sharingan revela a fila do oponente', () => {
@@ -901,6 +917,16 @@ describe('Galick Gun → Big Bang Attack', () => {
     expect(r.state.fighters[1].hp).toBe(184);
     expect(r.state.fighters[0].hand.some((c) => c.id === 'big_bang_attack')).toBe(false);
     expect(r.state.fighters[0].discard.some((c) => c.id === 'galick_gun')).toBe(true);
+  });
+
+  it('o custo exibido na mão coincide com o débito normal e o carregado', () => {
+    for (const [ki, expected] of [[4, 2], [5, 5]]) {
+      const s = newBattle();
+      s.fighters[0].ki = ki;
+      giveHand(s, 0, ['galick_gun']);
+      expect(currentCardCost(viewFor(s, 0).me, 'galick_gun')).toBe(expected);
+      expect(play(s, 0, 'galick_gun').fighters[0].ki).toBe(ki - expected);
+    }
   });
 
   it('desfazer o Galick Gun carregado devolve os 5 de Ki', () => {
